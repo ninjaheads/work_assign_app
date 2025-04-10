@@ -9,4 +9,3 @@ __pycache__/
 
 # 個人用スクリプトや認証設定（リポジトリに含めない）
 copy_master_to_workbook.py
-google_config.py
