@@ -1,0 +1,12 @@
+# 認証情報（Google APIキーなど）
+descension-dystopia-*.json
+
+# 開発用メモや一時ファイル
+*memo.txt
+
+# Python キャッシュフォルダ
+__pycache__/
+
+# 個人用スクリプトや認証設定（リポジトリに含めない）
+copy_master_to_workbook.py
+google_config.py
