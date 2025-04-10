@@ -1,13 +1,12 @@
 from datetime import datetime, timedelta
 import pandas as pd
-import gspread
+import streamlit as st
 from google_config import get_gspread_client
 
 # === スプレッドシート情報 === #
 MASTER_BOOK_ID = "1qMenVuJtfylLvcuXBTYTfx3z3aLQeHis343XvOGA5KI"
 MASTER_SHEET_NAME = "マスタ"
 SHIFT_MIRROR_SHEET_NAME = "勤務シフトmirror"
-
 
 def load_fixed_end_times(sheet) -> dict:
     """
@@ -24,7 +23,6 @@ def load_fixed_end_times(sheet) -> dict:
     except Exception as e:
         print(f"勤務シフトmirrorの取得エラー: {e}")
         return {}
-
 
 def process_all_data(rows, target_str, fixed_end_times):
     """
@@ -104,14 +102,13 @@ def process_all_data(rows, target_str, fixed_end_times):
 
     return pd.DataFrame(records), warnings
 
-
 def load_gantt_data_for_date(target_date: datetime.date, book_type="全体", area_filter="全体") -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
     """
     指定された日付・ブック・エリアに基づいて作業データを取得し、
     ガントチャート用のDataFrame、警告リスト、全データ（full_df）を返す。
     """
     client = get_gspread_client()
-    book = client.open_by_key(MASTER_BOOK_ID)
+    book = client.open_by_key(st.secrets["MASTER_BOOK_ID"])
     sheet = book.worksheet(MASTER_SHEET_NAME)
     all_data = sheet.get_all_records()
 

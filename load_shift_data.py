@@ -1,7 +1,6 @@
-import gspread
+import streamlit as st
 from datetime import datetime
 from google_config import get_gspread_client
-from typing import List
 import pandas as pd
 
 # === シフト表のスプレッドシートID === #
@@ -22,7 +21,7 @@ def load_shift_data_for_date(target_date: datetime.date) -> list[str]:
     """
     client = get_gspread_client()
     sheet_name = get_shift_sheet_for_date(target_date)
-    book = client.open_by_key(SHIFT_BOOK_ID)
+    book = client.open_by_key(st.secrets["SHIFT_BOOK_ID"])
     worksheet = book.worksheet(sheet_name)
 
     all_data = worksheet.get_all_records(head=4)  # 4行目をヘッダーとする

@@ -1,0 +1,19 @@
+streamlit==1.44.0            # Webアプリ本体
+pandas==2.2.2                # データフレーム処理
+numpy==2.0.1                 # 数値処理（pandasが内部で使用）
+plotly==6.0.1                # ガントチャート描画
+matplotlib==3.9.2            # グラフ描画（今後の拡張用）
+gspread==6.1.2               # Googleスプレッドシート連携
+gspread-dataframe==4.0.0     # pandasとgspreadの橋渡し
+gspread-formatting==1.2.0    # セルの書式設定（色付けなど）
+google-auth==2.25.2          # 認証
+google-auth-httplib2==0.2.0  # 認証補助（gspread依存）
+google-auth-oauthlib==1.2.0  # 認証補助（gspread依存）
+google-api-python-client==2.161.0  # 認証補助（gspread依存）
+httplib2==0.22.0             # Google APIで使われる
+requests==2.31.0             # API通信全般
+oauth2client==4.1.3          # 認証（古めだけどgspreadで使用）
+jinja2==3.1.6                # テンプレート（streamlit依存）
+protobuf==5.29.3             # Google APIの内部通信
+tenacity==9.0.0              # streamlit依存（リトライ制御）
+tornado==6.4.2               # streamlit依存（Webサーバー）
