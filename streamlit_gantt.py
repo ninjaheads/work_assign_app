@@ -7,11 +7,20 @@ from load_shift_data import load_shift_data_for_date, find_unassigned_workers
 # === ページ設定 === #
 st.set_page_config(layout="wide")
 
-# === 一時的に全データを取得してフィルタ候補を決定 === #
-with st.spinner("データを読み込み中..."):
-    target_date_default = datetime.today().date() + timedelta(days=1)
-    target_date = target_date_default
+# === セッション状態の初期化 === #
+if "print_mode" not in st.session_state:
+    st.session_state.print_mode = False
 
+# === 印刷用切り替えボタン === #
+if st.button("🖥️ 画面切替"):
+    st.session_state.print_mode = not st.session_state.print_mode
+
+# === ターゲット日付の設定 === #
+target_date_default = datetime.today().date() + timedelta(days=1)
+target_date = target_date_default
+
+# === データ取得 === #
+with st.spinner("データを読み込み中..."):
     try:
         _, _, full_df_original = load_gantt_data_for_date(target_date_default)
         book_options = ["全体"] + sorted(full_df_original["ブック"].dropna().unique().tolist())
@@ -22,38 +31,46 @@ with st.spinner("データを読み込み中..."):
         area_options = ["全体"]
         st.warning("この日付には予定がありません。別の日付を選択してください。")
 
-# === フィルター設定：日付 + ブック + エリアを並列配置 === #
-with st.expander("🔍 フィルター設定", expanded=True):
-    col1, col2, col3 = st.columns([2, 3, 3])
-    with col1:
-        target_date = st.date_input("📅 表示する日付", value=target_date_default)
-    with col2:
-        book_type = st.radio("📘 ブック選択", options=book_options, horizontal=True)
-    with col3:
-        area_filter = st.radio("🗂️ エリア選択", options=area_options, horizontal=True)
+# === 印刷モードでない場合のみフィルター表示 === #
+if not st.session_state.print_mode:
+    with st.expander("🔍 フィルター設定", expanded=True):
+        col1, col2, col3 = st.columns([2, 3, 3])
+        with col1:
+            target_date = st.date_input("📅 表示する日付", value=target_date_default)
+        with col2:
+            book_type = st.radio("📘 ブック選択", options=book_options, horizontal=True)
+        with col3:
+            area_filter = st.radio("🗂️ エリア選択", options=area_options, horizontal=True)
+else:
+    # 印刷モードでは初期値を使用
+    book_type = "全体"
+    area_filter = "全体"
 
-# === データ取得（フィルタ適用） === #
+# === フィルタ適用後のデータ取得 === #
 df, warnings, full_df = load_gantt_data_for_date(target_date, book_type=book_type, area_filter=area_filter)
 
-# === タイトルと未割当ポップオーバー表示（横並び） === #
-spacer1, title_col, popover_col = st.columns([1, 4, 1])
-with title_col:
-    st.markdown(f"<h3 style='text-align:center'>{target_date.strftime('%Y/%m/%d')} の{book_type}タイムライン</h3>", unsafe_allow_html=True)
-with popover_col:
-    with st.popover("未割当の作業者を表示"):
-        working_names = load_shift_data_for_date(target_date)
-        assigned_names = df["作業者"].unique().tolist() if not df.empty else []
-        unassigned = find_unassigned_workers(full_df, working_names)
+# === タイトルと未割当の表示 === #
+if st.session_state.print_mode:
+    st.markdown(f"<h2 style='text-align:center'>{target_date.strftime('%Y/%m/%d')} の{book_type}作業指示</h2>", unsafe_allow_html=True)
+else:
+    spacer1, title_col, popover_col = st.columns([1, 4, 1])
+    with title_col:
+        st.markdown(f"<h3 style='text-align:center'>{target_date.strftime('%Y/%m/%d')} の{book_type}タイムライン</h3>", unsafe_allow_html=True)
+    with popover_col:
+        with st.popover("未割当の作業者を表示"):
+            working_names = load_shift_data_for_date(target_date)
+            assigned_names = df["作業者"].unique().tolist() if not df.empty else []
+            unassigned = find_unassigned_workers(full_df, working_names)
 
-        if unassigned:
-            st.error("未割当の作業者:")
-            for name in unassigned:
-                st.write(f"・{name}")
-        else:
-            st.success("全員に作業が割り当てられています！")
+            if unassigned:
+                st.error("未割当の作業者:")
+                for name in unassigned:
+                    st.write(f"・{name}")
+            else:
+                st.success("全員に作業が割り当てられています！")
 
-# === 警告メッセージ表示 === #
-if warnings:
+# === 警告表示（印刷モードでは非表示） === #
+if warnings and not st.session_state.print_mode:
     for w in warnings:
         st.warning(w)
 
@@ -148,4 +165,5 @@ if not df.empty:
 
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("指定された日付の作業データが見つかりませんでした。")
+    if not st.session_state.print_mode:
+        st.info("指定された日付の作業データが見つかりませんでした。")

@@ -76,9 +76,35 @@ def process_all_data(rows, target_str, fixed_end_times):
                 except:
                     end_dt = start_dt + timedelta(hours=1)
 
-            if start_dt >= end_dt:
-                warnings.append(f"⚠ 作業者「{name}」の開始時間と終了時間が一致または逆転しています → {start} - {end_dt.strftime('%H:%M')}")
-                continue
+            fixed_end_str = fixed_end_times.get(name, "17:00")
+            try:
+                fixed_end_dt = datetime.strptime(f"{target_str} {fixed_end_str}", "%Y/%m/%d %H:%M")
+            except:
+                fixed_end_dt = datetime.strptime(f"{target_str} 17:00", "%Y/%m/%d %H:%M")
+
+            # 終業時刻の取得
+            fixed_end_str = fixed_end_times.get(name, "17:00")
+            try:
+                fixed_end_dt = datetime.strptime(f"{target_str} {fixed_end_str}", "%Y/%m/%d %H:%M")
+            except:
+                fixed_end_dt = datetime.strptime(f"{target_str} 17:00", "%Y/%m/%d %H:%M")
+
+            # 警告1：終業時刻以降の作業
+            if start_dt >= fixed_end_dt:
+                warnings.append(
+                    f"⚠ 作業者「{name}」に終業時刻（{fixed_end_str}）以降の作業が割り当てられています → {start} 開始"
+                )
+
+            # 警告2：同時刻に複数作業
+            duplicate_starts = [
+                task for j, task in enumerate(task_list)
+                if j != i and task.get("開始時間") == start
+            ]
+            if duplicate_starts:
+                warnings.append(
+                    f"⚠ 作業者「{name}」が同時刻に複数の作業を割り当てられています → {start} 開始の作業が重複しています。"
+                )
+
 
             # ラベル構築（2段組）
             area = row.get("エリア", "")
