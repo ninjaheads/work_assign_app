@@ -1,34 +1,63 @@
 from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
-from google_config import get_gspread_client
+from google_config import get_gspread_client, get_target_book_info
+from typing import Tuple
 
 # === スプレッドシート情報 === #
-MASTER_BOOK_ID = "1qMenVuJtfylLvcuXBTYTfx3z3aLQeHis343XvOGA5KI"
 MASTER_SHEET_NAME = "マスタ"
 SHIFT_MIRROR_SHEET_NAME = "勤務シフトmirror"
 
-def load_fixed_end_times(sheet) -> dict:
+@st.cache_data(ttl=60)
+def load_fixed_end_times(spreadsheet_id: str) -> dict:
     """
-    勤務シフトmirrorシートから作業者ごとの固定終業時間を辞書として返す。
-    {"佐藤栄記": "17:00", ...}
+    勤務シフトmirrorシートから作業者ごとの固定終業時間を取得（キャッシュあり）。
     """
     try:
-        shift_data = sheet.worksheet(SHIFT_MIRROR_SHEET_NAME).get_all_records()
+        client = get_gspread_client()
+        sheet = client.open_by_key(spreadsheet_id).worksheet(SHIFT_MIRROR_SHEET_NAME)
+        shift_data = sheet.get_all_records()
         return {
             row.get("氏名"): row.get("終業時間")
             for row in shift_data
             if row.get("氏名") and row.get("終業時間")
         }
     except Exception as e:
-        print(f"勤務シフトmirrorの取得エラー: {e}")
         return {}
 
+def get_rows_for_date(sheet, target_date_str):
+    # 🔹 A列（日付列）だけを取得（APIリクエスト①）
+    date_column = sheet.col_values(1)
+    if not date_column or len(date_column) < 2:
+        return [], []
+
+    headers = ["日付", "ブック", "作業者", "エリア", "系統", "品種", "開始時間", "作業内容", "指示"]
+
+    # 🔹 一致する行番号（1ベース）を抽出（※ヘッダー行 = 行1 を除外）
+    matching_indices = [i + 1 for i, val in enumerate(date_column[1:], start=1) if val == target_date_str]
+    if not matching_indices:
+        return [], headers
+
+    # 🔹 一括取得の範囲を決定
+    start_row = min(matching_indices)
+    end_row = max(matching_indices)
+    cell_range = f"A{start_row}:I{end_row}"
+
+    # 🔹 一括取得（APIリクエスト②）
+    cell_data = sheet.get(cell_range)
+
+    # 🔹 行→辞書変換（列数が足りない場合は補完）
+    records = []
+    for rel_i, abs_row in enumerate(range(start_row, end_row + 1)):
+        if abs_row in matching_indices and rel_i < len(cell_data):
+            row = cell_data[rel_i]
+            padded_row = row + [""] * (len(headers) - len(row))
+            record = dict(zip(headers, padded_row))
+            records.append(record)
+
+    return records, headers
+
 def process_all_data(rows, target_str, fixed_end_times):
-    """
-    与えられた全データ（フィルタ前）から終了時間処理やラベル構築を行い、
-    フィルタ前後の DataFrame 両方を返す。
-    """
     tasks_by_worker = {}
     for row in rows:
         name = row.get("作業者", "").strip()
@@ -80,7 +109,6 @@ def process_all_data(rows, target_str, fixed_end_times):
                 warnings.append(f"⚠ 作業者「{name}」の開始時間と終了時間が一致または逆転しています → {start} - {end_dt.strftime('%H:%M')}")
                 continue
 
-            # ラベル構築（2段組）
             area = row.get("エリア", "")
             line = row.get("系統", "")
             variety = row.get("品種", "")
@@ -102,20 +130,18 @@ def process_all_data(rows, target_str, fixed_end_times):
 
     return pd.DataFrame(records), warnings
 
-def load_gantt_data_for_date(target_date: datetime.date, book_type="全体", area_filter="全体") -> tuple[pd.DataFrame, list[str], pd.DataFrame]:
-    """
-    指定された日付・ブック・エリアに基づいて作業データを取得し、
-    ガントチャート用のDataFrame、警告リスト、全データ（full_df）を返す。
-    """
+def load_gantt_data_for_date(target_date: datetime.date, book_type="全体", area_filter="全体") -> Tuple[pd.DataFrame, list[str], pd.DataFrame]:
     client = get_gspread_client()
-    book = client.open_by_key(st.secrets["MASTER_BOOK_ID"])
-    sheet = book.worksheet(MASTER_SHEET_NAME)
-    all_data = sheet.get_all_records()
+    book_info = get_target_book_info("作業指示", target_date)
+    sheet = client.open_by_key(book_info["spreadsheet_id"]).worksheet(book_info["sheet_name"])
 
-    fixed_end_times = load_fixed_end_times(book)
     target_str = target_date.strftime("%Y/%m/%d")
-    rows = [row for row in all_data if row.get("日付") == target_str]
+    rows, _ = get_rows_for_date(sheet, target_str)
 
+    if not rows:
+        return pd.DataFrame(), [], pd.DataFrame()
+
+    fixed_end_times = load_fixed_end_times(book_info["spreadsheet_id"])
     full_df, warnings = process_all_data(rows, target_str, fixed_end_times)
     full_df_original = full_df.copy()
 

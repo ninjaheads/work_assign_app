@@ -1,44 +1,70 @@
 import streamlit as st
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
+from datetime import datetime
 from load_gantt_data import load_gantt_data_for_date
 from load_shift_data import load_shift_data_for_date, find_unassigned_workers
+from google_config import get_target_book_info
 
 # === ページ設定 === #
 st.set_page_config(layout="wide")
 
-# === 一時的に全データを取得してフィルタ候補を決定 === #
-with st.spinner("データを読み込み中..."):
-    target_date_default = datetime.today().date() + timedelta(days=1)
-    target_date = target_date_default
+# === セッションステートに target_date を保存 === #
+if "target_date" not in st.session_state:
+    st.session_state.target_date = datetime.today().date()
 
-    try:
-        _, _, full_df_original = load_gantt_data_for_date(target_date_default)
-        book_options = ["全体"] + sorted(full_df_original["ブック"].dropna().unique().tolist())
-        area_options = ["全体"] + sorted(full_df_original["エリア"].dropna().unique().tolist())
-    except Exception:
-        full_df_original = None
-        book_options = ["全体"]
-        area_options = ["全体"]
-        st.warning("この日付には予定がありません。別の日付を選択してください。")
+# === 先にカラム設定 target_date を定義しておく === #
+date_col, title_col, popover_col = st.columns([1, 4, 1])
+with date_col:
+    st.session_state.target_date = st.date_input("📅 表示する日付", value=st.session_state.target_date)
+target_date = st.session_state.target_date
 
-# === フィルター設定：日付 + ブック + エリアを並列配置 === #
+# === GSSIDからマスタのスプレッドシート情報を取得 === #
+try:
+    master_info = get_target_book_info("作業指示", target_date)
+    master_spreadsheet_id = master_info["spreadsheet_id"]
+    master_sheet_name = master_info["sheet_name"]
+except Exception as e:
+    st.error(f"マスタブックの取得に失敗しました: {e}")
+    st.stop()
+
+# === 初回データ読み込み（フィルタ候補決定） === #
+try:
+    with st.spinner("データを読み込み中..."):
+        _, _, full_df_original = load_gantt_data_for_date(
+            target_date,
+            book_type="全体",
+            area_filter="全体"
+        )
+
+    if full_df_original.empty:
+        st.warning("指定された日付に対応するデータが存在しません")
+        st.stop()
+
+    book_options = ["全体"] + sorted(full_df_original["ブック"].dropna().unique().tolist())
+    area_options = ["全体"] + sorted(full_df_original["エリア"].dropna().unique().tolist())
+
+except Exception as e:
+    st.error(f"データ読み込みに失敗しました: {e}")
+    st.stop()
+
+# === 日付後の残りのフィルター設定 === #
 with st.expander("🔍 フィルター設定", expanded=True):
-    col1, col2, col3 = st.columns([2, 3, 3])
+    col1, col2 = st.columns([1, 1])
     with col1:
-        target_date = st.date_input("📅 表示する日付", value=target_date_default)
-    with col2:
         book_type = st.radio("📘 ブック選択", options=book_options, horizontal=True)
-    with col3:
-        area_filter = st.radio("🗂️ エリア選択", options=area_options, horizontal=True)
+    with col2:
+        area_filter = st.radio("🧭 エリア選択", options=area_options, horizontal=True)
 
-# === データ取得（フィルタ適用） === #
+# === フィルタ適用データ取得 === #
 df, warnings, full_df = load_gantt_data_for_date(target_date, book_type=book_type, area_filter=area_filter)
 
-# === タイトルと未割当ポップオーバー表示（横並び） === #
-spacer1, title_col, popover_col = st.columns([1, 4, 1])
 with title_col:
-    st.markdown(f"<h3 style='text-align:center'>{target_date.strftime('%Y/%m/%d')} の{book_type}タイムライン</h3>", unsafe_allow_html=True)
+    area_suffix = f"（{area_filter}）" if area_filter != "全体" else ""
+    st.markdown(
+        f"<h3 style='text-align:center'>{target_date.strftime('%Y/%m/%d')} の{book_type}タイムライン{area_suffix}</h3>",
+        unsafe_allow_html=True
+    )
+
 with popover_col:
     with st.popover("未割当の作業者を表示"):
         working_names = load_shift_data_for_date(target_date)
@@ -52,7 +78,7 @@ with popover_col:
         else:
             st.success("全員に作業が割り当てられています！")
 
-# === 警告メッセージ表示 === #
+# === 警告表示 === #
 if warnings:
     for w in warnings:
         st.warning(w)
@@ -65,15 +91,23 @@ if not df.empty:
     bar_height = 0.8
 
     area_colors = {
-        "A-1": "#6baed6", "B-1": "#9ecae1",
-        "A-2": "#fc9272", "B-2": "#fcae91",
-        "A-3": "#74c476", "B-3": "#a1d99b",
-        "A-4": "#ffd92f", "前室": "#a6761d", "選果室": "#984ea3"
+        "A-1": "#80C8FF",
+        "B-1": "#B3DEFF",
+        "A-2": "#FF9999",
+        "B-2": "#FFCCCC",
+        "A-3": "#AADDAA",
+        "B-3": "#CCFFCC",
+        "A-4": "#FFEB3B",
+        "前室": "#E0C68C",
+        "選果室": "#A3B7FF",
+        "機械室": "#CCCCCC",
+        "休憩室": "#FFFFFF",
+        "事務室": "#FFCC99"
     }
-    default_color = "#cccccc"
+
+    default_color = "#ffffff"
     def get_area_color(area):
-        area = area.strip()
-        return area_colors.get(area, default_color)
+        return area_colors.get(area.strip(), default_color)
 
     for _, row in df.iterrows():
         name = row["作業者"]

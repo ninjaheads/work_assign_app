@@ -8,11 +8,12 @@ def get_gspread_client():
     return gspread.service_account_from_dict(credentials_dict)
 
 # 指定したブック名と日付から、GSSIDブックの中から有効な書き込み先を取得
+@st.cache_data(ttl=60)
 def get_target_book_info(book_type: str, target_date: date) -> dict:
     client = get_gspread_client()
     
     # GSSIDシートを開く
-    gssid_book = client.open_by_key("1_IC8ykDpc91eUjfi9muJEjF8W4hE4y5SuxSyWvTGrKI")
+    gssid_book = client.open_by_key(st.secrets["GSSID_BOOK_ID"])
     gssid_sheet = gssid_book.worksheet("GSSID")
     records = gssid_sheet.get_all_records()
 
@@ -28,7 +29,6 @@ def get_target_book_info(book_type: str, target_date: date) -> dict:
                         "range": row["範囲"]
                     }
             except Exception as e:
-                print(f"日付の解析に失敗しました: {e}")
                 continue
 
     raise ValueError(f"{book_type} に対応する有効なブックが見つかりません。")
