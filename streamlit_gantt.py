@@ -1,6 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
+from pytz import timezone  # 追加
 from load_gantt_data import load_gantt_data_for_date
 from load_shift_data import load_shift_data_for_date, find_unassigned_workers
 from google_config import get_target_book_info
@@ -8,9 +9,10 @@ from google_config import get_target_book_info
 # === ページ設定 === #
 st.set_page_config(layout="wide")
 
-# === セッションステートに target_date を保存 === #
+# === セッションステートに target_date を保存（日本時間で） === #
+japan = timezone("Asia/Tokyo")
 if "target_date" not in st.session_state:
-    st.session_state.target_date = datetime.today().date()
+    st.session_state.target_date = datetime.now(japan).date()
 
 # === 先にカラム設定 target_date を定義しておく === #
 date_col, title_col, popover_col = st.columns([1, 4, 1])
@@ -110,6 +112,7 @@ if not df.empty:
         return area_colors.get(area.strip(), default_color)
 
     for _, row in df.iterrows():
+        print(row)  # 👈 まずはこれで休憩が存在しているか確認
         name = row["作業者"]
         y_center = worker_ypos[name]
         y0 = y_center - bar_height / 2
